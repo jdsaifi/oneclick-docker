@@ -1,10 +1,11 @@
 "use client";
 
-import { Globe, HardDrive, Key, Network, Clock, Tag, Box } from "lucide-react";
+import { Globe, HardDrive, Key, Network, Clock, Tag, Box, Terminal, Copy } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
+import { Button } from "@/components/ui/button";
 import { formatBytes } from "@/lib/format";
+import { toast } from "sonner";
 
 interface ContainerInspect {
   Id: string;
@@ -266,6 +267,9 @@ export function ContainerOverview({ data }: { data: ContainerInspect }) {
         </Card>
       )}
 
+      {/* Quick Connect */}
+      {isRunning && <QuickConnectCard data={data} ports={ports} name={name} />}
+
       {/* Labels */}
       {Object.keys(data.Config.Labels || {}).length > 0 && (
         <Card className="lg:col-span-2">
@@ -311,5 +315,116 @@ function Row({
       <span className="text-muted-foreground">{label}</span>
       <span className={mono ? "font-mono text-xs" : ""}>{value}</span>
     </div>
+  );
+}
+
+function QuickConnectCard({
+  data,
+  ports,
+  name,
+}: {
+  data: ContainerInspect;
+  ports: { host: string; container: string }[];
+  name: string;
+}) {
+  const image = data.Config.Image.toLowerCase();
+  const commands: { label: string; cmd: string }[] = [];
+
+  // Shell access
+  commands.push({
+    label: "Open Shell",
+    cmd: `docker exec -it ${name} /bin/sh`,
+  });
+
+  // Image-specific connection commands
+  const portMap = new Map<number, number>();
+  for (const p of ports) {
+    const hostPort = parseInt(p.host.split(":").pop() || "0", 10);
+    const containerPort = parseInt(p.container.split("/")[0], 10);
+    if (hostPort > 0 && containerPort > 0) {
+      portMap.set(containerPort, hostPort);
+    }
+  }
+
+  if (image.includes("postgres")) {
+    const port = portMap.get(5432) || 5432;
+    commands.push({
+      label: "Connect via psql",
+      cmd: `psql -h localhost -p ${port} -U postgres`,
+    });
+  }
+  if (image.includes("mysql") || image.includes("mariadb")) {
+    const port = portMap.get(3306) || 3306;
+    commands.push({
+      label: "Connect via mysql",
+      cmd: `mysql -h 127.0.0.1 -P ${port} -u root -p`,
+    });
+  }
+  if (image.includes("redis")) {
+    const port = portMap.get(6379) || 6379;
+    commands.push({
+      label: "Connect via redis-cli",
+      cmd: `redis-cli -h localhost -p ${port}`,
+    });
+  }
+  if (image.includes("mongo")) {
+    const port = portMap.get(27017) || 27017;
+    commands.push({
+      label: "Connect via mongosh",
+      cmd: `mongosh --host localhost --port ${port}`,
+    });
+  }
+  if (image.includes("nginx") || image.includes("httpd") || image.includes("caddy")) {
+    const port = portMap.get(80) || portMap.get(443);
+    if (port) {
+      commands.push({
+        label: "Open in browser",
+        cmd: `http://localhost:${port}`,
+      });
+    }
+  }
+
+  // Logs shortcut
+  commands.push({
+    label: "View logs",
+    cmd: `docker logs -f ${name}`,
+  });
+
+  function copy(text: string) {
+    navigator.clipboard.writeText(text);
+    toast.success("Copied to clipboard");
+  }
+
+  return (
+    <Card className="lg:col-span-2">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm font-medium flex items-center gap-2">
+          <Terminal className="h-4 w-4" /> Quick Connect
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-2">
+          {commands.map((c, i) => (
+            <div
+              key={i}
+              className="flex items-center justify-between p-2 rounded bg-muted/50 gap-2"
+            >
+              <div className="min-w-0 flex-1">
+                <p className="text-xs text-muted-foreground mb-0.5">{c.label}</p>
+                <p className="text-sm font-mono truncate">{c.cmd}</p>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 shrink-0"
+                onClick={() => copy(c.cmd)}
+              >
+                <Copy className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   );
 }

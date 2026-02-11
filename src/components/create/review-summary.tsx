@@ -1,9 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import {
   Box,
   Cpu,
-  MemoryStick,
   HardDrive,
   Globe,
   Key,
@@ -12,13 +12,23 @@ import {
   CheckCircle2,
   Copy,
   ExternalLink,
+  FileCode,
+  Terminal,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useCreateFormStore } from "@/stores/create-form-store";
 import { RESOURCE_TIERS } from "@/types/docker";
+import { toDockerRunCommand, toDockerCompose } from "@/lib/export-config";
 import { toast } from "sonner";
 
 interface ReviewSummaryProps {
@@ -36,6 +46,7 @@ interface ReviewSummaryProps {
 
 export function ReviewSummary({ onSubmit, isSubmitting, result }: ReviewSummaryProps) {
   const state = useCreateFormStore();
+  const [showExport, setShowExport] = useState(false);
 
   const tier = RESOURCE_TIERS.find((t) => t.id === state.sizeId);
   const sizeLabel =
@@ -52,6 +63,9 @@ export function ReviewSummary({ onSubmit, isSubmitting, result }: ReviewSummaryP
     navigator.clipboard.writeText(text);
     toast.success("Copied to clipboard");
   }
+
+  const dockerRun = isValid ? toDockerRunCommand(state) : "";
+  const dockerCompose = isValid ? toDockerCompose(state) : "";
 
   // Show success state after creation
   if (result) {
@@ -87,7 +101,7 @@ export function ReviewSummary({ onSubmit, isSubmitting, result }: ReviewSummaryP
                         className="flex items-center justify-between p-2 rounded bg-muted/50 font-mono text-sm"
                       >
                         <span>
-                          localhost:{p.host} → :{p.container}/{p.protocol}
+                          localhost:{p.host} &rarr; :{p.container}/{p.protocol}
                         </span>
                         <div className="flex gap-1">
                           <Button
@@ -195,21 +209,83 @@ export function ReviewSummary({ onSubmit, isSubmitting, result }: ReviewSummaryP
         </p>
       )}
 
-      <Button
-        size="lg"
-        className="w-full"
-        onClick={onSubmit}
-        disabled={!isValid || isSubmitting}
-      >
-        {isSubmitting ? (
-          <>
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            Creating Container...
-          </>
-        ) : (
-          "Create Container"
-        )}
-      </Button>
+      <div className="flex gap-2">
+        <Button
+          size="lg"
+          className="flex-1"
+          onClick={onSubmit}
+          disabled={!isValid || isSubmitting}
+        >
+          {isSubmitting ? (
+            <>
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              Creating Container...
+            </>
+          ) : (
+            "Create Container"
+          )}
+        </Button>
+        <Button
+          size="lg"
+          variant="outline"
+          onClick={() => setShowExport(true)}
+          disabled={!isValid}
+          title="Export as docker run / docker-compose.yml"
+        >
+          <FileCode className="h-4 w-4" />
+        </Button>
+      </div>
+
+      {/* Export Dialog */}
+      <Dialog open={showExport} onOpenChange={setShowExport}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Export Configuration</DialogTitle>
+          </DialogHeader>
+          <Tabs defaultValue="run">
+            <TabsList className="w-full">
+              <TabsTrigger value="run" className="flex-1 gap-1.5">
+                <Terminal className="h-3.5 w-3.5" />
+                docker run
+              </TabsTrigger>
+              <TabsTrigger value="compose" className="flex-1 gap-1.5">
+                <FileCode className="h-3.5 w-3.5" />
+                docker-compose.yml
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="run" className="mt-3">
+              <div className="relative">
+                <pre className="bg-muted p-4 rounded-md text-sm font-mono overflow-x-auto max-h-80 whitespace-pre-wrap break-all">
+                  {dockerRun}
+                </pre>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="absolute top-2 right-2 h-8 w-8"
+                  onClick={() => copyToClipboard(dockerRun)}
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
+            </TabsContent>
+            <TabsContent value="compose" className="mt-3">
+              <div className="relative">
+                <pre className="bg-muted p-4 rounded-md text-sm font-mono overflow-x-auto max-h-80 whitespace-pre">
+                  {dockerCompose}
+                </pre>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="absolute top-2 right-2 h-8 w-8"
+                  onClick={() => copyToClipboard(dockerCompose)}
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
+            </TabsContent>
+          </Tabs>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
